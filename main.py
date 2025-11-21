@@ -974,11 +974,66 @@ async def reset_state():
 async def get_balance():
     """Vérifie le solde du compte"""
     try:
-        balance = client.futures_account_balance()
-        usdt_balance = next((item for item in balance if item['asset'] == 'USDT'), None)
-        return {"balance": usdt_balance}
+        # Méthode corrigée pour TESTNET
+        account_info = client.futures_account()
+        assets = account_info.get('assets', [])
+        positions = account_info.get('positions', [])
+        
+        # Trouver le solde USDT
+        usdt_balance = next((asset for asset in assets if asset['asset'] == 'USDT'), None)
+        
+        # Informations supplémentaires utiles
+        return {
+            "balance": usdt_balance,
+            "total_wallet_balance": account_info.get('totalWalletBalance'),
+            "available_balance": account_info.get('availableBalance'),
+            "account_type": "TESTNET" if USE_TESTNET else "LIVE",
+            "assets_count": len(assets),
+            "positions_count": len([p for p in positions if float(p['positionAmt']) != 0])
+        }
+    except BinanceAPIException as e:
+        return {"error": f"Binance API Error: {str(e)}", "code": e.code}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": f"General error: {str(e)}"}
+
+
+@app.get("/debug/binance")
+async def debug_binance():
+    """Endpoint de debug pour Binance"""
+    try:
+        # Test de connexion basique
+        ping = client.ping()
+        server_time = client.get_server_time()
+        exchange_info = client.futures_exchange_info()
+        
+        # Test des clés API avec une requête simple
+        try:
+            account_info = client.futures_account()
+            account_status = "OK"
+            account_assets = len(account_info.get('assets', []))
+        except Exception as acc_e:
+            account_status = f"Error: {str(acc_e)}"
+            account_assets = 0
+        
+        return {
+            "ping": ping,
+            "server_time": server_time,
+            "symbols_count": len(exchange_info['symbols']),
+            "api_key_set": bool(API_KEY and API_KEY != ""),
+            "api_secret_set": bool(API_SECRET and API_SECRET != ""),
+            "testnet_mode": USE_TESTNET,
+            "account_status": account_status,
+            "account_assets_count": account_assets,
+            "status": "Connexion Binance OK"
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "api_key_set": bool(API_KEY and API_KEY != ""),
+            "api_secret_set": bool(API_SECRET and API_SECRET != ""),
+            "testnet_mode": USE_TESTNET,
+            "status": "Erreur connexion Binance"
+        }
 
 @app.get("/orders")
 async def get_orders(symbol: str = "ETHUSDC"):
